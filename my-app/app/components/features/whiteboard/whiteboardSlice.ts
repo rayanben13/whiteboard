@@ -1,15 +1,16 @@
 import { createSlice, current, PayloadAction } from "@reduxjs/toolkit";
 import { elementType, ToolTypes } from "../../constants/Types";
-import { emitRedo, emitUndo } from "../../socket/socket";
 
 interface State {
   tool: ToolTypes;
   elements: elementType[];
   past: elementType[][];
   future: elementType[][];
+  color: string;
 }
 const initialState: State = {
   tool: ToolTypes.None,
+  color: '',
   past: [],
   future: [],
   elements: [],
@@ -25,36 +26,40 @@ const whiteboardSlice = createSlice({
       state.tool = action.payload;
     },
     updateElement(state, action) {
-      const plainElements =
-        current(state.elements);
+      if (!state.elements) {
+        state.elements = [];
+      }
 
-      state.past.push(
-        structuredClone(
-          plainElements
-        )
-      );
+      const plainState = current(state);
+      const plainElements = plainState.elements;
 
+      state.past.push(structuredClone(plainElements));
       state.future = [];
 
-      const { id } =
-        action.payload;
-
-      const index =
-        state.elements.findIndex(
-          el => el.id === id
-        );
+      const { id } = action.payload;
+      const index = state.elements.findIndex(el => el.id === id);
 
       if (index === -1) {
-        state.elements.push(
-          action.payload
-        );
+        state.elements.push(action.payload);
       } else {
-        state.elements[index] =
-          action.payload;
+        state.elements[index] = action.payload;
       }
     },
     setElement(state, action) {
       state.elements = action.payload;
+    },
+    setColor(state, action) {
+      state.color = action.payload;
+    },
+    changeSelectedElementsColor(state, action) {
+      const { ids, color } = action.payload;
+
+
+      state.elements = state.elements.map((el) =>
+        ids.includes(el.id)
+          ? { ...el, color }
+          : el
+      );
     },
 
     saveHistory(state) {
@@ -74,13 +79,14 @@ const whiteboardSlice = createSlice({
       if (state.past.length === 0)
         return;
 
+
       const plainElements = current(state.elements);
 
       state.future.push(structuredClone(plainElements));
       const previous = state.past.pop();
       if (previous) {
         state.elements = previous;
-        emitUndo(state.elements)
+        // emitUndo(state.elements)
       }
     },
     redo(state) {
@@ -103,11 +109,11 @@ const whiteboardSlice = createSlice({
         state.elements = next;
       }
 
-      emitRedo(state.elements)
+      // emitRedo(state.elements)
     }
   },
 });
 
-export const { setTool, updateElement, setElement, undo, redo, saveHistory } = whiteboardSlice.actions;
+export const { setTool, updateElement, setElement, undo, redo, saveHistory, setColor, changeSelectedElementsColor } = whiteboardSlice.actions;
 
 export default whiteboardSlice.reducer;

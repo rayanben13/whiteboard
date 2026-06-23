@@ -8,6 +8,7 @@ const getResizeHandle = (
     y: number,
     element: elementType
 ) => {
+
     const size = 5;
 
     const handles = {
@@ -56,6 +57,8 @@ const isInsideElement = (
     element: elementType
 ) => {
 
+
+    if (!element) return;
     // line
     if (element.toolType === ToolTypes.Line) {
         return isPointNearLine(
@@ -115,6 +118,7 @@ export function getElementAtPosition(
     y: number,
     elements: elementType[]
 ) {
+    if (!elements) return;
     for (
         let i =
             elements.length - 1;

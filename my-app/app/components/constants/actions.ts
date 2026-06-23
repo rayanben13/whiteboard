@@ -6,4 +6,7 @@ export enum Actions {
     Move = "Move",
     ResizeAndMoveStyle = "ResizeAndMoveStyle",
     Selection = "Selection",
+    ReadyToResize = "ReadyToResize",
+    ReadyToMove = "ReadyToMove",
+    Panning = "Panning"
 }

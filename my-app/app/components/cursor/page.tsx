@@ -1,5 +1,5 @@
 "use client"
-import { TextCursor } from 'lucide-react'
+import { MouseIcon } from 'lucide-react'
 import { useSelector } from 'react-redux'
 
 function CursorPage() {
@@ -15,7 +15,7 @@ function CursorPage() {
                         left: cursor.x,
                     }}
                 >
-                    <TextCursor />
+                    <MouseIcon />
                 </div>
             ))}
         </div>

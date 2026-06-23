@@ -6,17 +6,20 @@ function CreateElement({
     x2,
     y2,
     toolType,
-    id
+    id,
+    color
 }: {
     x1: number,
     y1: number,
     x2: number,
     y2: number,
     toolType: ToolTypes,
-    id: string
+    id: string,
+    color?: string
 }) {
 
     switch (toolType) {
+        case ToolTypes.FillRectangle:
         case ToolTypes.Rectangle:
             return {
                 toolType,
@@ -25,6 +28,7 @@ function CreateElement({
                 x2: Math.max(x1, x2),
                 y2: Math.max(y1, y2),
                 id,
+                color,
             }
         case ToolTypes.Line:
             return {
@@ -34,6 +38,7 @@ function CreateElement({
                 x2: x2,
                 y2: y2,
                 id,
+                color,
             }
         default:
             return { message: "Please select a tool" }

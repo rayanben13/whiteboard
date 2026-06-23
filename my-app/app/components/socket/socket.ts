@@ -31,7 +31,9 @@ export const connectToWhiteboardServer = () => {
     })
 
     socket.on("cursor-move", (cursorData: any) => {
-        store.dispatch(setCursor(cursorData));
+        if (cursorData?.userId !== socket?.id) {
+            store.dispatch(setCursor(cursorData));
+        }
     })
 
     socket.on(
@@ -52,29 +54,30 @@ export const connectToWhiteboardServer = () => {
     })
 }
 
-export const emitUpdateElement = (elementData: any) => {
+export const emitUpdateElement = ({ elementData, roomId }: { elementData: any, roomId: string }) => {
     if (!socket) return;
-    socket.emit("update-element", elementData)
+    socket.emit("update-element", { elementData, roomId })
 }
 
-export const emitClearAllElements = () => {
+export const emitClearAllElements = ({ roomId }: { roomId: string }) => {
     if (!socket) return;
-    socket.emit("clear-all-elements")
+    socket.emit("clear-all-elements", roomId)
 }
 
-export const emitUndo = (newElements: elementType[]) => {
+export const emitUndo = ({ newElements, roomId }: { newElements: elementType[], roomId: string }) => {
     if (!socket) return;
-    socket.emit("undo", newElements)
+    socket.emit("undo", { newElements, roomId })
 }
 
-export const emitRedo = (newElements: elementType[]) => {
+export const emitRedo = ({ newElements, roomId }: { newElements: elementType[], roomId: string }) => {
     if (!socket) return;
-    socket.emit("redo", newElements)
+    socket.emit("redo", { newElements, roomId })
 }
 
 export const handleMouseMoveSocket = (
     x: number,
-    y: number
+    y: number,
+    roomId: string
 ) => {
     if (!socket) return;
 
@@ -84,11 +87,17 @@ export const handleMouseMoveSocket = (
             x,
             y,
             userId: socket.id,
+            roomId
         }
     );
 };
 
-export const handleDeleteCursor = () => {
+export const handleDeleteCursor = ({ roomId }: { roomId: string }) => {
     if (!socket) return;
-    socket.emit("delete-cursor");
+    socket.emit("delete-cursor", roomId);
+}
+
+export const handleRoomJoin = (roomId: string) => {
+    if (!socket) return;
+    socket.emit("room-join", roomId);
 }

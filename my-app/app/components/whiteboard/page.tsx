@@ -1,5 +1,6 @@
 "use client"
-import { Suspense, useEffect, useRef, useState } from 'react';
+import Toolbar from '@/components/toolbar';
+import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import rough from 'roughjs';
 import { v4 as uuid } from "uuid";
@@ -9,7 +10,6 @@ import CursorPage from '../cursor/page';
 import { redo, undo, updateElement } from '../features/whiteboard/whiteboardSlice';
 import { emitUpdateElement, handleDeleteCursor, handleMouseMoveSocket } from '../socket/socket';
 import { RootState } from '../store/store';
-import WhiteboardMenu from './menu';
 import CreateElement from './utils/createElement';
 import { getCursorStyle } from './utils/cursorStyle';
 import { drawElement } from './utils/drawElement';
@@ -18,20 +18,28 @@ import { getElementAtPosition } from './utils/getElementAtPosition';
 import { getResizeHandlePosition } from './utils/getResizeHandle';
 import { getSelectedElements } from './utils/getSelectedElements';
 
-function WhiteboardPage() {
+function WhiteboardPage({ roomId }: { roomId: string }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const bgCanvasRef = useRef<HTMLCanvasElement>(null);
 
     const toolTypeSelected = useSelector((state: RootState) => state.whiteboard.tool);
+    const color = useSelector((state: RootState) => state.whiteboard.color);
     const elements = useSelector((state: RootState) => state.whiteboard.elements);
     const dispatch = useDispatch();
 
-    const [cursorStyle, setCursorStyle] = useState("default");
+    // const [cursorStyle, setCursorStyle] = useState("default");
     const [action, setAction] = useState<Actions>(Actions.None);
     const [textInput, setTextInput] = useState({ visible: false, x: 0, y: 0, value: "" });
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [viewTransform, setViewTransform] = useState({
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+    });
+    const [isPanning, setIsPanning] = useState(false);
 
-    const startCoords = useRef({ x: 0, y: 0 });
+
+    const startCoords = useRef({ worldX: 0, worldY: 0 });
     const currentElementId = useRef<string>("");
     const lastEmitTime = useRef(0);
     const selectedResizeHandleRef = useRef<string | null>(null);
@@ -39,14 +47,39 @@ function WhiteboardPage() {
     const pointsRef = useRef<{ x: number, y: number }[]>([]);
     const dragOffsetRef = useRef({ x: 0, y: 0 });
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const tempMovingElementRef = useRef<elementType | TextElement | null>(null);
+    const panStart = useRef({
+        x: 0,
+        y: 0
+    });
 
     const [screenSize, setScreenSize] = useState({ width: 0, height: 0 });
 
 
+
+    const handleWheel = (
+        e: React.WheelEvent
+    ) => {
+        // e.preventDefault();
+
+        const zoomFactor = 0.1;
+
+        setViewTransform(prev => ({
+            ...prev,
+            scale:
+                e.deltaY < 0
+                    ? prev.scale + zoomFactor
+                    : Math.max(
+                        0.1,
+                        prev.scale - zoomFactor
+                    )
+        }));
+    };
+
     useEffect(() => {
         const handleMouseLeave =
             () => {
-                handleDeleteCursor();
+                handleDeleteCursor({ roomId });
             };
 
         document.addEventListener(
@@ -99,32 +132,61 @@ function WhiteboardPage() {
     }, []);
 
     useEffect(() => {
-        setScreenSize({
-            width: window.innerWidth,
-            height: window.innerHeight,
-        });
+        const handleResize = () => {
+            setScreenSize({
+                width: window.innerWidth,
+                height: window.innerHeight,
+            });
+        };
+        // Set initial size on mount
+        handleResize();
+        window.addEventListener("resize", handleResize);
+        return () => {
+            window.removeEventListener("resize", handleResize);
+        };
     }, []);
 
     // رسم العناصر المستقرة على اللوحة الخلفية
+    // رسم العناصر المستقرة على اللوحة الخلفية
     useEffect(() => {
         const canvas = bgCanvasRef.current;
-        if (!canvas) return;
+        if (!canvas || !elements) return;
         const ctx = canvas.getContext("2d");
         ctx?.clearRect(0, 0, canvas.width, canvas.height);
 
         const rc = rough.canvas(canvas);
-        elements.forEach((element) => {
+
+        ctx?.save();
+
+        ctx?.translate(
+            viewTransform.offsetX,
+            viewTransform.offsetY
+        );
+
+        ctx?.scale(
+            viewTransform.scale,
+            viewTransform.scale
+        );
+
+        elements?.forEach((element) => {
+            if ((action === Actions.Move || action === Actions.Resize) && element.id === selectedElementRef.current?.id) {
+                return;
+            }
             drawElement(ctx, rc, element);
         });
+
         const selectedElements = elements.filter(
             el => selectedIds.includes(el.id)
         );
 
         selectedElements.forEach(el => {
+            if (action === Actions.Move) return;
             drawSelection(ctx, el);
         });
-    }, [elements, screenSize.width, screenSize.height, selectedIds]);
 
+        ctx?.restore();
+
+    }, [elements, screenSize.width, screenSize.height, selectedIds, action, viewTransform]);
     // text box
     useEffect(() => {
         if (
@@ -134,6 +196,8 @@ function WhiteboardPage() {
             textareaRef.current.focus();
         }
     }, [textInput.visible]);
+
+    console.log("test")
 
     const handleMouseDown = (event: React.MouseEvent) => {
         if (textInput.visible) return;
@@ -145,33 +209,58 @@ function WhiteboardPage() {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
 
-        startCoords.current = { x, y };
+        const worldX =
+            (x - viewTransform.offsetX) /
+            viewTransform.scale;
+
+        const worldY =
+            (y - viewTransform.offsetY) /
+            viewTransform.scale;
+
+        startCoords.current = { worldX, worldY };
         currentElementId.current = uuid();
 
-        const element = getElementAtPosition(x, y, elements);
+        const element = getElementAtPosition(worldX, worldY, elements);
 
-
+        console.log("mouse Down", toolTypeSelected, element)
 
         if (toolTypeSelected === ToolTypes.None) {
-            setAction(Actions.Selection)
-            startCoords.current = { x, y };
-            if (element) {
-                setSelectedIds([element.element.id]);
-            } else {
-                setSelectedIds([]);
+            panStart.current = {
+                x: event.clientX,
+                y: event.clientY
             };
-
+            startCoords.current = {
+                worldX: viewTransform.offsetX,
+                worldY: viewTransform.offsetY
+            };
+            setIsPanning(true);
+            setAction(Actions.Panning);
+            return;
         }
 
 
+
+
+        if (toolTypeSelected === ToolTypes.Selection) {
+            setAction(Actions.Selection)
+            startCoords.current = { worldX, worldY };
+            if (element) {
+                setSelectedIds([element.element.id]);
+                return;
+            } else {
+                setSelectedIds([]);
+                return;
+            };
+
+        }
 
         if (toolTypeSelected === ToolTypes.Text) {
             setAction(Actions.Writing);
             setTimeout(() => {
                 setTextInput({
                     visible: true,
-                    x,
-                    y,
+                    x: worldX,
+                    y: worldY,
                     value: "",
                 });
             }, 0); return;
@@ -182,21 +271,22 @@ function WhiteboardPage() {
             if (element) {
                 selectedElementRef.current = element.element;
                 selectedResizeHandleRef.current = element.resizeHandle;
+                tempMovingElementRef.current = { ...element.element };
 
                 dragOffsetRef.current = {
-                    x: x - element.element.x1,
-                    y: y - element.element.y1,
+                    x: worldX - element.element.x1,
+                    y: worldY - element.element.y1,
                 };
-                setAction(element.resizeHandle === "inside" ? Actions.Move : Actions.Resize);
+                setAction(element.resizeHandle === "inside" ? Actions.ReadyToMove : Actions.ReadyToResize);
                 return;
             }
         }
 
-        if (toolTypeSelected === ToolTypes.Pencil || toolTypeSelected === ToolTypes.Rectangle || toolTypeSelected === ToolTypes.Line) {
+        if (toolTypeSelected === ToolTypes.Pencil || toolTypeSelected === ToolTypes.Rectangle || toolTypeSelected === ToolTypes.Line || toolTypeSelected === ToolTypes.FillRectangle) {
             setAction(Actions.Drawing);
             if (toolTypeSelected === ToolTypes.Pencil) {
                 pointsRef.current = [];
-                pointsRef.current.push({ x, y });
+                pointsRef.current.push({ x: worldX, y: worldY });
             }
         }
 
@@ -218,22 +308,45 @@ function WhiteboardPage() {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
 
+        const worldX =
+            (x - viewTransform.offsetX) /
+            viewTransform.scale;
+
+        const worldY =
+            (y - viewTransform.offsetY) /
+            viewTransform.scale;
+
         const rc = rough.canvas(canvas);
         let tempElement;
 
         const now = Date.now();
         if (now - lastEmitTime.current > 16) {
-            handleMouseMoveSocket(x, y);
+            handleMouseMoveSocket(worldX, worldY, roomId);
 
             lastEmitTime.current = now;
         }
 
+        if (action === Actions.Panning && toolTypeSelected === ToolTypes.None) {
+            const dx = event.clientX - panStart.current.x;
+            const dy = event.clientY - panStart.current.y;
+            setViewTransform(prev => ({
+                ...prev,
+                offsetX: startCoords.current.worldX + dx,
+                offsetY: startCoords.current.worldY + dy,
+            }));
+            return;
+        }
 
-        if (toolTypeSelected === ToolTypes.None && action === Actions.Selection) {
+
+        if (toolTypeSelected === ToolTypes.Selection && action === Actions.Selection) {
+            ctx.save();
+            ctx.translate(viewTransform.offsetX, viewTransform.offsetY);
+            ctx.scale(viewTransform.scale, viewTransform.scale);
+
             ctx.setLineDash([5, 5]);
-            ctx.strokeRect(startCoords.current.x, startCoords.current.y, x - startCoords.current.x, y - startCoords.current.y);
-            ctx.setLineDash([])
-            const selectedElements = getSelectedElements(startCoords.current.x, startCoords.current.y, x, y, elements);
+            ctx.strokeRect(startCoords.current.worldX, startCoords.current.worldY, worldX - startCoords.current.worldX, worldY - startCoords.current.worldY);
+            ctx.setLineDash([]);
+            const selectedElements = getSelectedElements(startCoords.current.worldX, startCoords.current.worldY, worldX, worldY, elements);
             const newSelectedIds =
                 selectedElements.map(
                     el => el.id
@@ -241,139 +354,169 @@ function WhiteboardPage() {
 
             setSelectedIds(newSelectedIds);
             selectedElements.forEach((e) => {
+                drawSelection(ctx, e);
+            });
 
-                drawSelection(ctx, e as elementType | TextElement);
-            })
-
+            ctx.restore();
             return;
         }
 
         if (toolTypeSelected === ToolTypes.Resize) {
+            const element = getElementAtPosition(worldX, worldY, elements);
+            const newCursor = getCursorStyle(element!);
+            if (canvasRef.current) {
+                canvasRef.current.style.cursor = newCursor;
+            }
 
-            const element = getElementAtPosition(x, y, elements);
-            setCursorStyle(getCursorStyle(element));
+            if (action === Actions.ReadyToMove) {
+                setAction(Actions.Move);
+                return;
+            }
+            if (action === Actions.ReadyToResize) {
+                setAction(Actions.Resize);
+                return;
+            }
             if (action === Actions.Move) {
                 const selected = selectedElementRef.current;
-                if (!selected)
-                    return;
+                if (!selected || !tempMovingElementRef.current) return;
 
+                const dx = worldX - startCoords.current.worldX;
+                const dy = worldY - startCoords.current.worldY;
 
-                const dx = x - startCoords.current.x;
-                const dy = y - startCoords.current.y;
-
-                let updatedElement;
-
-                // pencil move
+                // 1. تحديث إحداثيات النسخة المؤقتة داخل الـ Ref مباشرة (بدون ريندر)
                 if (selected.toolType === ToolTypes.Pencil) {
-                    updatedElement = {
+                    tempMovingElementRef.current = {
                         ...selected,
-                        points:
-                            selected.points?.map(
-                                (p) => ({
-                                    x:
-                                        p.x + dx,
-                                    y:
-                                        p.y + dy,
-                                })
-                            ),
+                        points: selected.points?.map(p => ({ x: p.x + dx, y: p.y + dy })),
+                    };
+                } else if (selected.toolType === ToolTypes.Text) {
+                    tempMovingElementRef.current = {
+                        ...selected,
+                        x1: selected.x1 + dx,
+                        y1: selected.y1 + dy,
+                    };
+                } else {
+                    tempMovingElementRef.current = {
+                        ...selected,
+                        x1: selected.x1 + dx,
+                        y1: selected.y1 + dy,
+                        x2: selected.x2 + dx,
+                        y2: selected.y2 + dy,
                     };
                 }
 
-                // text move
-                else if (selected.toolType === ToolTypes.Text) {
+                // 2. الرسم المباشر الفوري على الكانفاس الأمامي السريع
+                ctx.clearRect(0, 0, canvas.width, canvas.height); // تنظيف الكانفاس الأمامي
+                ctx.save();
+                ctx.translate(viewTransform.offsetX, viewTransform.offsetY);
+                ctx.scale(viewTransform.scale, viewTransform.scale);
+                drawElement(ctx, rc, tempMovingElementRef.current);
+                ctx.restore();
 
-                    updatedElement = {
-                        ...selected,
-                        x1:
-                            selected.x1 +
-                            dx,
-                        y1:
-                            selected.y1 +
-                            dy,
-                    };
-                }
-
-                // rect + line
-                else {
-                    updatedElement = {
-                        ...selected,
-                        x1:
-                            selected.x1 +
-                            dx,
-                        y1:
-                            selected.y1 +
-                            dy,
-                        x2:
-                            selected.x2 +
-                            dx,
-                        y2:
-                            selected.y2 +
-                            dy,
-                    };
-                }
-
-                dispatch(
-                    updateElement(
-                        updatedElement
-                    )
-                );
-
-                emitUpdateElement(
-                    updatedElement
-                );
-
-                selectedElementRef.current =
-                    updatedElement;
-
-                startCoords.current = {
-                    x,
-                    y,
-                };
+                // إرسال الإحداثيات عبر السوكيت للمستخدمين الآخرين ليَروا الحركة حية
+                emitUpdateElement({ elementData: tempMovingElementRef.current, roomId });
 
                 return;
             }
             else if (action === Actions.Resize) {
+                setAction(Actions.Resize);
                 const selected = selectedElementRef.current;
                 if (!selected) return;
 
-                const updatedElement = getResizeHandlePosition(x, y, selected, selectedResizeHandleRef.current)
+                // 1. حساب الأبعاد الجديدة بناءً على حركة الفأرة والـ Handle
+                const updatedElement = getResizeHandlePosition(worldX, worldY, selected, selectedResizeHandleRef.current);
+
                 if (updatedElement) {
-                    dispatch(updateElement(updatedElement))
-                    selectedElementRef.current = updatedElement;
+                    let normalizedElement: elementType | TextElement = { ...updatedElement };
+
+                    if (updatedElement.toolType === ToolTypes.Rectangle) {
+                        const rectEl = updatedElement;
+                        const minX = Math.min(rectEl.x1, rectEl.x2);
+                        const maxX = Math.max(rectEl.x1, rectEl.x2);
+                        const minY = Math.min(rectEl.y1, rectEl.y2);
+                        const maxY = Math.max(rectEl.y1, rectEl.y2);
+
+                        normalizedElement = {
+                            ...rectEl,
+                            x1: minX,
+                            y1: minY,
+                            x2: maxX,
+                            y2: maxY,
+                        };
+                    }
+
+                    // 2. تخزين النتيجة الحية داخل الـ Ref المؤقت (بدون تفجير Re-render)
+                    tempMovingElementRef.current = normalizedElement;
+
+                    // 3. مسح الكانفاس الأمامي وإعادة رسم الشكل بأبعاده الجديدة فوراُ
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    ctx.save();
+
+                    ctx.translate(
+                        viewTransform.offsetX,
+                        viewTransform.offsetY
+                    );
+
+                    ctx.scale(
+                        viewTransform.scale,
+                        viewTransform.scale
+                    );
+
+                    drawElement(ctx, rc, normalizedElement);
+                    ctx.restore();
+
+                    // 4. بث التغيير اللحظي للمستخدمين الآخرين عبر السوكيت
+                    emitUpdateElement({ elementData: normalizedElement, roomId });
                 }
                 return;
             }
             return;
         }
-        else {
-            setCursorStyle("default")
-        }
+        else if (canvasRef.current) canvasRef.current.style.cursor = "default";
+
+
 
         if (action === Actions.Drawing) {
 
             if (toolTypeSelected === ToolTypes.Pencil) {
-                pointsRef.current.push({ x, y });
+                pointsRef.current.push({ x: worldX, y: worldY });
                 tempElement = {
                     toolType: ToolTypes.Pencil,
                     id: currentElementId.current,
                     points: [...pointsRef.current],
+                    color
                 };
             } else {
                 tempElement = CreateElement({
-                    x1: startCoords.current.x,
-                    y1: startCoords.current.y,
-                    x2: x,
-                    y2: y,
+                    x1: startCoords.current.worldX,
+                    y1: startCoords.current.worldY,
+                    x2: worldX,
+                    y2: worldY,
                     toolType: toolTypeSelected,
                     id: currentElementId.current,
+                    color,
                 });
             }
 
+            ctx.save();
+
+            ctx.translate(
+                viewTransform.offsetX,
+                viewTransform.offsetY
+            );
+
+            ctx.scale(
+                viewTransform.scale,
+                viewTransform.scale
+            );
+
             drawElement(ctx, rc, tempElement as elementType | TextElement);
+            ctx.restore();
 
             // const now = Date.now();
             // if (now - lastEmitTime.current > 16) {
-            emitUpdateElement(tempElement);
+            emitUpdateElement({ elementData: tempElement, roomId });
             //     lastEmitTime.current = now;
             // }
         }
@@ -381,8 +524,14 @@ function WhiteboardPage() {
     };
 
     const handleMouseUp = (event: React.MouseEvent) => {
-        if (action === Actions.Selection && toolTypeSelected === ToolTypes.None) {
+        if (action === Actions.Selection && toolTypeSelected === ToolTypes.Selection) {
             setAction(Actions.None);
+            return;
+        }
+
+        if (action === Actions.ReadyToMove || action === Actions.ReadyToResize || action === Actions.Panning) {
+            setAction(Actions.None);
+            setIsPanning(false);
             return;
         }
 
@@ -397,7 +546,21 @@ function WhiteboardPage() {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
 
+        const worldX = (x - viewTransform.offsetX) / viewTransform.scale;
+        const worldY = (y - viewTransform.offsetY) / viewTransform.scale;
+
+        if (action === Actions.Resize || action === Actions.Move) {
+            if (tempMovingElementRef.current) {
+                dispatch(updateElement(tempMovingElementRef.current));
+                tempMovingElementRef.current = null;
+                selectedElementRef.current = null;
+                setAction(Actions.None);
+                return;
+            }
+        }
+
         selectedElementRef.current = null;
+
 
         if (action === Actions.Drawing) {
             const finalElement =
@@ -406,26 +569,29 @@ function WhiteboardPage() {
                         toolType: ToolTypes.Pencil,
                         id: currentElementId.current,
                         points: pointsRef.current,
+                        color,
                     }
                     : CreateElement({
-                        x1: startCoords.current.x,
-                        y1: startCoords.current.y,
-                        x2: x,
-                        y2: y,
+                        x1: startCoords.current.worldX,
+                        y1: startCoords.current.worldY,
+                        x2: worldX,
+                        y2: worldY,
                         toolType: toolTypeSelected,
                         id: currentElementId.current,
+                        color
                     });
 
             if ('toolType' in finalElement) {
                 dispatch(updateElement(finalElement));
             }
+            console.log(toolTypeSelected, action)
 
             const ctx = canvas.getContext("2d");
             ctx?.clearRect(0, 0, canvas.width, canvas.height);
         }
 
 
-        setCursorStyle("default");
+        if (canvasRef.current) canvasRef.current.style.cursor = "default";
         selectedResizeHandleRef.current = null;
         setAction(Actions.None);
     };
@@ -442,92 +608,96 @@ function WhiteboardPage() {
                 x1: textInput.x,
                 y1: textInput.y,
                 text: value,
+                color
             };
             dispatch(updateElement(textElement));
-            emitUpdateElement(textElement);
+            emitUpdateElement({ elementData: textElement, roomId });
         }
 
         setTextInput({ visible: false, x: 0, y: 0, value: "" });
         setAction(Actions.None);
     };
 
+
+    console.log(roomId)
+
     return (
         <div>
-            <WhiteboardMenu />
-            <Suspense fallback={<h1>Loading...</h1>}>
 
-                <div style={{ position: 'relative', width: screenSize.width, height: screenSize.height, border: '1px solid #ccc' }}>
+            <Toolbar roomId={roomId} bgCanvasRef={bgCanvasRef} selectedIds={selectedIds} />
 
-                    {/* طبقة رقم 1: الخلفية الثابتة للأشكال المستقرة */}
-                    <canvas
-                        ref={bgCanvasRef}
-                        style={{ position: 'absolute', top: 0, left: 0, zIndex: 1 }}
-                        width={screenSize.width}
-                        height={screenSize.height}
-                    />
+            <div className="relative w-screen h-screen overflow-hidden">
 
-                    <canvas
-                        ref={canvasRef}
-                        onMouseDown={handleMouseDown}
-                        onMouseUp={handleMouseUp}
-                        onMouseMove={handleMouseMove}
-                        style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            zIndex: 2,
-                            background: 'transparent',
-                            pointerEvents: textInput.visible ? 'none' : 'auto',
-                            cursor: cursorStyle,
+                {/* طبقة رقم 1: الخلفية الثابتة للأشكال المستقرة */}
+                <canvas
+                    ref={bgCanvasRef}
+                    style={{ position: 'absolute', top: 0, left: 0, zIndex: 1 }}
+                    width={screenSize.width || '100vw'}
+                    height={screenSize.height || '100vh'}
+
+                />
+
+                <canvas
+                    ref={canvasRef}
+                    onWheel={handleWheel}
+                    onMouseDown={handleMouseDown}
+                    onMouseUp={handleMouseUp}
+                    onMouseMove={handleMouseMove}
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        zIndex: 2,
+                        background: 'transparent',
+                        pointerEvents: textInput.visible ? 'none' : 'auto',
+                    }}
+                    width={screenSize.width || '100vw'}
+                    height={screenSize.height || '100vh'}
+                />
+
+                <CursorPage />
+
+
+                {textInput.visible && (
+                    <textarea
+                        ref={textareaRef}
+                        value={textInput.value}
+                        onChange={(e) => setTextInput((prev) => ({ ...prev, value: e.target.value }))}
+                        onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleBlur();
+                            } else if (e.key === 'Escape') {
+                                setTextInput(prev => ({ ...prev, visible: false }));
+                                setAction(Actions.None);
+                            }
                         }}
-                        width={screenSize.width}
-                        height={screenSize.height}
+                        onBlur={handleBlur}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseUp={(e) => e.stopPropagation()}
+                        style={{
+                            position: "absolute",
+                            top: textInput.y,
+                            left: textInput.x,
+                            zIndex: 999,
+                            display: "block", // 👈 Critical for inline elements
+                            width: "150px",
+                            minHeight: "30px",
+                            color: color || "black",
+                            border: "1px solid #333",
+                            background: "white",
+                            outline: "none",
+                            resize: "none",
+                            fontSize: "16px",
+                            fontFamily: "sans-serif",
+                            padding: "4px",
+                            boxSizing: "border-box",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+                        }}
                     />
-
-                    <CursorPage />
-
-
-                    {textInput.visible && (
-                        <textarea
-                            ref={textareaRef}
-                            value={textInput.value}
-                            onChange={(e) => setTextInput((prev) => ({ ...prev, value: e.target.value }))}
-                            onKeyDown={(e) => {
-                                e.stopPropagation();
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleBlur();
-                                } else if (e.key === 'Escape') {
-                                    setTextInput(prev => ({ ...prev, visible: false }));
-                                    setAction(Actions.None);
-                                }
-                            }}
-                            onBlur={handleBlur}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onMouseUp={(e) => e.stopPropagation()}
-                            style={{
-                                position: "absolute",
-                                top: textInput.y,
-                                left: textInput.x,
-                                zIndex: 999,
-                                display: "block", // 👈 Critical for inline elements
-                                width: "150px",
-                                minHeight: "30px",
-                                color: "black",
-                                border: "1px solid #333",
-                                background: "white",
-                                outline: "none",
-                                resize: "none",
-                                fontSize: "16px",
-                                fontFamily: "sans-serif",
-                                padding: "4px",
-                                boxSizing: "border-box",
-                                boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
-                            }}
-                        />
-                    )}
-                </div>
-            </Suspense>
+                )}
+            </div>
         </div>
     );
 }

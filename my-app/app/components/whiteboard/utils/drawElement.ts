@@ -9,15 +9,21 @@ export const drawElement = (ctx: CanvasRenderingContext2D | null, rc: RoughCanva
     const generator = rough.generator()
 
     const createRectangle = (x1: number, y1: number, x2: number, y2: number) => {
-        return generator.rectangle(x1, y1, x2 - x1, y2 - y1, { roughness: 0 })
+        return generator.rectangle(x1, y1, x2 - x1, y2 - y1, { roughness: 0, stroke: element.color || "black" })
+    }
+    const createFillRectangle = (x1: number, y1: number, x2: number, y2: number) => {
+        return generator.rectangle(x1, y1, x2 - x1, y2 - y1, { roughness: 0, stroke: element.color || "black", fill: element.color || "black", fillStyle: "solid" })
     }
 
     const createLine = (x1: number, y1: number, x2: number, y2: number) => {
-        return generator.line(x1, y1, x2, y2, { roughness: 0 })
+        return generator.line(x1, y1, x2, y2, { roughness: 0, stroke: element.color || "black" })
     }
 
 
     switch (element.toolType) {
+        case ToolTypes.FillRectangle:
+            rc.draw(createFillRectangle(element.x1, element.y1, element.x2, element.y2))
+            break;
         case ToolTypes.Rectangle:
             rc.draw(createRectangle(element.x1, element.y1, element.x2, element.y2))
             break;
@@ -48,6 +54,7 @@ export const drawElement = (ctx: CanvasRenderingContext2D | null, rc: RoughCanva
 
             const path = new Path2D(pathData);
 
+            ctx.fillStyle = element.color || "black";
             ctx.fill(path);
 
             break;
@@ -58,11 +65,10 @@ export const drawElement = (ctx: CanvasRenderingContext2D | null, rc: RoughCanva
             ctx.font =
                 "24px Arial";
 
-            ctx.fillStyle =
-                "black";
+            ctx.fillStyle = element.color || "black";
 
             ctx.fillText(
-                element.text,
+                element.text ?? "",
                 element.x1,
                 element.y1
             );

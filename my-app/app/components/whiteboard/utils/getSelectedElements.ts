@@ -1,4 +1,4 @@
-import { elementType } from "../../constants/Types";
+import { elementType, ToolTypes } from "../../constants/Types";
 
 export const getSelectedElements = (
     x1: number,
@@ -13,11 +13,32 @@ export const getSelectedElements = (
     const maxY = Math.max(y1, y2);
 
     return elements.filter((element) => {
+        let bounds;
+
+        if (element.toolType === ToolTypes.Pencil) {
+            bounds = getPencilBounds(element.points);
+        } else {
+            bounds = element;
+        }
+
         return !(
-            element.x2 < minX ||
-            element.x1 > maxX ||
-            element.y2 < minY ||
-            element.y1 > maxY
+            bounds.x2 < minX ||
+            bounds.x1 > maxX ||
+            bounds.y2 < minY ||
+            bounds.y1 > maxY
         );
     });
+};
+
+const getPencilBounds = (points: { x: number, y: number }[] | undefined) => {
+    if (!points) return { x1: 0, y1: 0, x2: 0, y2: 0 };
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+
+    return {
+        x1: Math.min(...xs),
+        y1: Math.min(...ys),
+        x2: Math.max(...xs),
+        y2: Math.max(...ys),
+    };
 };

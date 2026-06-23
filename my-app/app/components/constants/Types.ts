@@ -4,10 +4,12 @@ export enum ToolTypes {
     Pencil = "pencil",
     Line = "line",
     Rectangle = "rectangle",
-    Circle = "circle",
     Eraser = "eraser",
     Text = "text",
     Resize = "resize",
+    FillRectangle = "fillRectangle",
+    Selection = "selection",
+    Mouse = "mouse"
 }
 
 export type TextElement = {
@@ -16,6 +18,7 @@ export type TextElement = {
     x1: number;
     y1: number;
     text: string;
+    color?: string
 };
 
 
@@ -30,6 +33,7 @@ export type elementType = {
     points?: Array<{ x: number, y: number }>
     message?: string;
     text?: string;
+    color?: string;
 }
 
 export type otherElementsType = {
