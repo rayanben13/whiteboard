@@ -221,9 +221,6 @@ function WhiteboardPage({ roomId }: { roomId: string }) {
         currentElementId.current = uuid();
 
         const element = getElementAtPosition(worldX, worldY, elements);
-
-        console.log("mouse Down", toolTypeSelected, element)
-
         if (toolTypeSelected === ToolTypes.None) {
             panStart.current = {
                 x: event.clientX,
@@ -237,10 +234,6 @@ function WhiteboardPage({ roomId }: { roomId: string }) {
             setAction(Actions.Panning);
             return;
         }
-
-
-
-
         if (toolTypeSelected === ToolTypes.Selection) {
             setAction(Actions.Selection)
             startCoords.current = { worldX, worldY };
@@ -513,12 +506,8 @@ function WhiteboardPage({ roomId }: { roomId: string }) {
 
             drawElement(ctx, rc, tempElement as elementType | TextElement);
             ctx.restore();
-
-            // const now = Date.now();
-            // if (now - lastEmitTime.current > 16) {
             emitUpdateElement({ elementData: tempElement, roomId });
-            //     lastEmitTime.current = now;
-            // }
+
         }
 
     };

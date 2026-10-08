@@ -2,15 +2,15 @@
 
 import {
     BoxSelect,
-    LineDotRightHorizontal,
     Menu,
-    MouseIcon,
+    MousePointer,
     Pencil,
     Pointer,
-    RectangleEllipsis,
     RectangleHorizontal,
-    Text,
+    Slash,
+    Square,
     Trash2,
+    Type,
     X
 } from "lucide-react";
 import { useState } from "react";
@@ -43,7 +43,7 @@ function WhiteboardMenu({ roomId }: { roomId: string }) {
     const tools = [
         {
             type: ToolTypes.None,
-            icon: MouseIcon,
+            icon: MousePointer,
             title: "Pan & Zoom",
         },
         {
@@ -63,12 +63,12 @@ function WhiteboardMenu({ roomId }: { roomId: string }) {
         },
         {
             type: ToolTypes.FillRectangle,
-            icon: RectangleEllipsis,
+            icon: (props: React.ComponentProps<"svg">) => <Square {...props} fill="currentColor" />, // 🌟 تجعلها ممتلئة تلقائياً
             title: "Filled Rectangle",
         },
         {
             type: ToolTypes.Line,
-            icon: LineDotRightHorizontal,
+            icon: Slash,
             title: "Line",
         },
         {
@@ -78,7 +78,7 @@ function WhiteboardMenu({ roomId }: { roomId: string }) {
         },
         {
             type: ToolTypes.Text,
-            icon: Text,
+            icon: Type,
             title: "Text",
         },
     ];

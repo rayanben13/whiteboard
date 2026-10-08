@@ -20,7 +20,6 @@ export function DialogDemo() {
     const [roomName, setRoomName] = useState("")
     const router = useRouter();
     const handleCreateRoom = () => {
-        console.log("dd", roomName)
         const roomId = crypto.randomUUID();
         router.push(`/whiteboard/${roomId}?name=${roomName}`)
     }
@@ -31,7 +30,7 @@ export function DialogDemo() {
         <Dialog>
             <form onSubmit={(e) => { e.preventDefault(); handleCreateRoom(); }}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" className="flex items-center gap-1.5 px-3 h-9 rounded-xl border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all duration-200 active:scale-95 shadow-sm">
+                    <Button name="create-room" aria-label="create-room" variant="outline" className="flex items-center gap-1.5 px-3 h-9 rounded-xl border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-all duration-200 active:scale-95 shadow-sm">
                         <Users className="w-4.5 h-4.5" strokeWidth={2} />
                         <span className="hidden sm:inline">{pathname === '/' ? 'Create room' : room_Name}</span>
                     </Button>

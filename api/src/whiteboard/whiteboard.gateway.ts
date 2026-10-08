@@ -47,9 +47,8 @@ export class WhiteboardGateway implements OnGatewayConnection, OnGatewayDisconne
 
   @SubscribeMessage("cursor-move")
   handleCursorMove(client: Socket, cursorData: any) {
-    if (cursorData?.userId !== client.id) {
-      client.to(cursorData.roomId).emit("cursor-move", cursorData);
-    }
+    client.to(cursorData.roomId).emit("cursor-move", cursorData);
+
   }
 
   @SubscribeMessage("undo")
